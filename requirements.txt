@@ -7,6 +7,8 @@ langchain-text-splitters
 langchain-chroma
 langchain-groq
 
+nltk
+
 pinecone
 pinecone-text
 
