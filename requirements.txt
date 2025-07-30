@@ -7,7 +7,7 @@ langchain-text-splitters
 langchain-chroma
 langchain-groq
 
-pinecone-client
+pinecone
 pinecone-text
 
 chromadb
