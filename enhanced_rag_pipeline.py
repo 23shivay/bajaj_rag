@@ -2,19 +2,18 @@ import os
 from dotenv import load_dotenv
 import time
 import logging
-import traceback
 import json
 import requests
 from urllib.parse import urlparse
 import hashlib
 import re
 import gc
-from typing import List, Literal, Optional
+import tempfile
+from typing import List, Optional
 from pydantic import BaseModel, Field
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
-from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from pinecone_text.sparse import BM25Encoder
@@ -22,187 +21,189 @@ from langchain_community.retrievers import PineconeHybridSearchRetriever
 from pinecone import Pinecone, ServerlessSpec
 from langchain_core.documents import Document
 
-# Configure logging to reduce memory overhead
-logging.basicConfig(level=logging.WARNING)
+# Minimal logging to save memory
+logging.basicConfig(level=logging.ERROR)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
-# --- 0. Load Environment Variables ---
+# Load environment variables
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 pinecone_api_key = os.getenv("PINECONE_API_KEY")
 pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
 
 if not groq_api_key or not pinecone_api_key:
-    raise ValueError("Please ensure GROQ_API_KEY and PINECONE_API_KEY are set in your .env file")
+    raise ValueError("Missing API keys in .env file")
 
-print("Environment variables loaded.")
+print("Environment loaded.")
 
-# Global variables - initialized lazily
+# Global variables - ultra-lazy initialization
 pc = None
 index = None
 vectorstore = None
 embedding_model = None
 sparse_encoder = None
-index_name = "insurance-langchain-enhanced"
+index_name = "ultra-optimized-rag"
 
-# --- MEMORY-OPTIMIZED INITIALIZATION ---
-def initialize_models():
-    """Lazy initialization of models to save memory"""
+def initialize_ultra_light_models():
+    """Ultra-lightweight model initialization"""
     global embedding_model, sparse_encoder, pc
     
     if embedding_model is None:
-        print("Initializing embedding model...")
-        # Use a smaller model to reduce memory usage
+        print("Loading ultra-light embedding model...")
+        # Use the smallest possible model
         embedding_model = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'},  # Force CPU to avoid GPU memory issues
-            encode_kwargs={'normalize_embeddings': True}
+            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",  # Even smaller: 61MB vs 90MB
+            model_kwargs={
+                'device': 'cpu',
+                'trust_remote_code': False
+            },
+            encode_kwargs={
+                'normalize_embeddings': True,
+                'batch_size': 1,  # Process one at a time to save memory
+                'show_progress_bar': False
+            }
         )
     
     if sparse_encoder is None:
-        print("Initializing sparse encoder...")
+        print("Loading minimal sparse encoder...")
         sparse_encoder = BM25Encoder()
-        # Minimal fitting to reduce memory
-        sparse_encoder.fit(["dummy"])
+        # Fit with minimal data
+        sparse_encoder.fit(["sample"])
     
     if pc is None:
-        pc = Pinecone(api_key=pinecone_api_key, environment=pinecone_environment)
+        pc = Pinecone(api_key=pinecone_api_key)
 
-# --- MEMORY-OPTIMIZED TEXT SPLITTER ---
-def create_memory_efficient_splitter():
-    """Smaller chunks to reduce memory usage"""
+def create_ultra_light_splitter():
+    """Ultra-small chunks to minimize memory usage"""
     return RecursiveCharacterTextSplitter(
-        chunk_size=400,  # Reduced from 800
-        chunk_overlap=50,  # Reduced from 100
-        separators=["\n\n", "\n", ". ", " "],
-        keep_separator=False  # Save memory
+        chunk_size=200,  # Very small chunks
+        chunk_overlap=20,  # Minimal overlap
+        separators=["\n\n", "\n", ". "],
+        keep_separator=False
     )
 
-# --- OPTIMIZED DOCUMENT PROCESSING ---
-def download_and_process_document_optimized(document_url: str) -> List[Document]:
-    """Memory-optimized document processing with cleanup"""
+def download_and_process_ultra_light(document_url: str) -> List[Document]:
+    """Ultra-lightweight document processing"""
     if not document_url:
         return []
 
-    print(f"Processing: {document_url}")
-    temp_file_path = None
+    print(f"Processing document...")
     
     try:
-        # Stream download with smaller chunks
-        response = requests.get(document_url, stream=True)
-        response.raise_for_status()
-
-        file_hash = hashlib.md5(document_url.encode('utf-8')).hexdigest()[:8]  # Shorter hash
-        parsed_url = urlparse(document_url)
-        filename_base = os.path.basename(parsed_url.path) or "doc"
-        temp_file_path = f"temp_{file_hash}.pdf"
-
-        # Write with smaller buffer
-        with open(temp_file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=4096):  # Smaller chunks
+        # Use temporary file with context manager
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_path = temp_file.name
+            
+            # Stream download with very small chunks
+            response = requests.get(document_url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            for chunk in response.iter_content(chunk_size=1024):  # Very small chunks
                 if chunk:
-                    f.write(chunk)
+                    temp_file.write(chunk)
         
-        # Clear response from memory
+        # Clear response immediately
         del response
         gc.collect()
 
-        # Process document
-        content_type = 'pdf'  # Assume PDF for simplicity
-        docs = []
+        # Load and process document
+        loader = PyMuPDFLoader(temp_path)
+        docs = loader.load()
         
-        if content_type == 'pdf':
-            loader = PyMuPDFLoader(temp_file_path)
-            docs = loader.load()
-        
-        # Use memory-efficient splitter
-        splitter = create_memory_efficient_splitter()
+        # Split into very small chunks
+        splitter = create_ultra_light_splitter()
         chunks = splitter.split_documents(docs)
         
-        # Clear docs from memory
-        del docs
+        # Limit number of chunks to save memory
+        if len(chunks) > 100:  # Limit to 100 chunks max
+            chunks = chunks[:100]
+        
+        # Clear docs immediately
+        del docs, loader
         gc.collect()
         
-        print(f"Processed into {len(chunks)} chunks.")
+        print(f"Created {len(chunks)} ultra-light chunks.")
         return chunks
 
     except Exception as e:
-        print(f"Error processing document: {e}")
+        print(f"Document processing error: {e}")
         return []
     finally:
         # Always cleanup temp file
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except:
-                pass
+        try:
+            if 'temp_path' in locals():
+                os.unlink(temp_path)
+        except:
+            pass
 
-# --- OPTIMIZED PINECONE SETUP ---
-def setup_pinecone_optimized(document_url_hash: str, chunks_to_upsert: List[Document]):
-    """Memory-optimized Pinecone setup with batching"""
+def setup_ultra_light_pinecone(document_hash: str, chunks: List[Document]):
+    """Ultra-lightweight Pinecone setup"""
     global index, vectorstore
     
-    initialize_models()
+    initialize_ultra_light_models()
     
-    # Create index if needed
+    # Create or get index
     if index_name not in pc.list_indexes().names():
-        print(f"Creating index '{index_name}'...")
+        print(f"Creating ultra-light index...")
         pc.create_index(
             name=index_name,
-            dimension=384,
+            dimension=384,  # paraphrase-MiniLM-L3-v2 dimension
             metric="dotproduct",
             spec=ServerlessSpec(cloud="aws", region=pinecone_environment)
         )
-        # Wait for index to be ready
+        # Wait for readiness
         while not pc.describe_index(index_name).status['ready']:
-            time.sleep(2)
+            time.sleep(1)
 
     index = pc.Index(index_name)
 
-    print(f"Upserting {len(chunks_to_upsert)} chunks...")
+    print(f"Upserting {len(chunks)} chunks in ultra-small batches...")
     
-    # Process in smaller batches to reduce memory usage
-    BATCH_SIZE = 50  # Reduced from 100
+    # Ultra-small batch size to minimize memory usage
+    ULTRA_BATCH_SIZE = 10
     
-    for i in range(0, len(chunks_to_upsert), BATCH_SIZE):
-        batch_chunks = chunks_to_upsert[i:i + BATCH_SIZE]
-        vectors_to_upsert = []
+    for i in range(0, len(chunks), ULTRA_BATCH_SIZE):
+        batch_chunks = chunks[i:i + ULTRA_BATCH_SIZE]
+        vectors = []
         
         for j, chunk in enumerate(batch_chunks):
             try:
-                # Generate embeddings
-                dense_vector = embedding_model.embed_query(chunk.page_content)
-                sparse_vector_data = sparse_encoder.encode_queries([chunk.page_content])[0]
+                # Process one embedding at a time
+                dense_vec = embedding_model.embed_query(chunk.page_content)
+                sparse_vec = sparse_encoder.encode_queries([chunk.page_content])[0]
 
-                # Minimal metadata to save memory
+                # Minimal metadata
                 metadata = {
-                    'text': chunk.page_content[:1000],  # Truncate to save space
-                    'document_url_hash': document_url_hash,
+                    'text': chunk.page_content[:500],  # Truncate text
+                    'doc_hash': document_hash,
                     'page': int(chunk.metadata.get('page', 0))
                 }
 
-                vector_id = f"doc_{document_url_hash}_chunk_{i+j}"
-
-                vectors_to_upsert.append({
-                    "id": vector_id,
-                    "values": dense_vector,
-                    "sparse_values": sparse_vector_data,
+                vectors.append({
+                    "id": f"doc_{document_hash}_{i+j}",
+                    "values": dense_vec,
+                    "sparse_values": sparse_vec,
                     "metadata": metadata
                 })
 
+                # Clear variables immediately
+                del dense_vec, sparse_vec
+                
             except Exception as e:
                 print(f"Error processing chunk {i+j}: {e}")
                 continue
 
-        # Upsert batch
-        if vectors_to_upsert:
+        # Upsert ultra-small batch
+        if vectors:
             try:
-                index.upsert(vectors=vectors_to_upsert)
-                print(f"Upserted batch {i//BATCH_SIZE + 1}")
+                index.upsert(vectors=vectors)
+                print(f"Upserted ultra-batch {i//ULTRA_BATCH_SIZE + 1}")
             except Exception as e:
-                print(f"Error upserting batch: {e}")
+                print(f"Upsert error: {e}")
         
-        # Clear batch from memory
-        del vectors_to_upsert
+        # Aggressive cleanup
+        del vectors, batch_chunks
         gc.collect()
 
     # Initialize retriever
@@ -210,171 +211,148 @@ def setup_pinecone_optimized(document_url_hash: str, chunks_to_upsert: List[Docu
         embeddings=embedding_model,
         sparse_encoder=sparse_encoder,
         index=index,
-        text_key="text",
+        text_key="text"
     )
-    print("Retriever initialized.")
+    print("Ultra-light retriever ready.")
 
-# --- SIMPLIFIED MODELS ---
-class InternalSearchQueryItem(BaseModel):
-    type: Literal["keyword", "semantic"] = Field(description="Search type")
+# Simplified models
+class UltraSearchItem(BaseModel):
     query: str = Field(description="Search query")
-    reason: str = Field(description="Search reason")
 
-class InternalSearchPlan(BaseModel):
-    searches: List[InternalSearchQueryItem] = Field(description="Search queries")
-
-class AnswersResponse(BaseModel):
-    answers: List[str] = Field(description="Generated answers")
-
-# --- SIMPLIFIED SEARCH LOGIC ---
-def generate_simple_search_plan(question: str) -> List[InternalSearchQueryItem]:
-    """Generate a simple search plan to reduce processing overhead"""
-    question_lower = question.lower()
-    key_terms = re.findall(r'\b\w+\b', question_lower)
-    key_terms = [word for word in key_terms if len(word) > 2 and word not in 
-                {'what', 'is', 'the', 'are', 'there', 'any', 'does', 'this', 'policy', 'under'}]
+def generate_ultra_simple_searches(question: str) -> List[str]:
+    """Ultra-simple search generation"""
+    # Extract key terms
+    words = re.findall(r'\b\w{3,}\b', question.lower())
+    key_words = [w for w in words if w not in {'what', 'does', 'this', 'policy', 'cover', 'the', 'are', 'any'}]
     
-    searches = [
-        InternalSearchQueryItem(
-            type="keyword",
-            query=' '.join(key_terms[:3]),
-            reason="Direct keyword search"
-        ),
-        InternalSearchQueryItem(
-            type="semantic",
-            query=question,
-            reason="Semantic search"
-        )
-    ]
+    searches = []
+    if key_words:
+        searches.append(' '.join(key_words[:3]))  # Keyword search
+    searches.append(question)  # Semantic search
     
     return searches
 
-# --- OPTIMIZED SEARCH FUNCTION ---
-def perform_optimized_search(search_query_item, k: int = 4, document_filter: Optional[dict] = None) -> List[Document]:
-    """Reduced k value to limit memory usage"""
+def perform_ultra_light_search(query: str, k: int = 2, doc_filter: Optional[dict] = None) -> List[Document]:
+    """Ultra-lightweight search with minimal results"""
     try:
-        retrieved_docs = vectorstore.invoke(
-            search_query_item.query,
-            config={"configurable": {"search_kwargs": {"k": k, "filter": document_filter}}}
+        docs = vectorstore.invoke(
+            query,
+            config={"configurable": {"search_kwargs": {"k": k, "filter": doc_filter}}}
         )
-        return retrieved_docs
+        return docs
     except Exception as e:
         print(f"Search error: {e}")
         return []
 
-# --- OPTIMIZED PARSING ---
-def simple_parse_answer(raw_response: str) -> str:
-    """Simplified answer parsing"""
+def ultra_simple_parse(response: str) -> str:
+    """Ultra-simple response parsing"""
     try:
-        # Try JSON first
-        if '{' in raw_response and 'answers' in raw_response:
-            json_match = re.search(r'\{[^{}]*"answers"[^{}]*\[[^\]]*\][^{}]*\}', raw_response, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
-                if 'answers' in data and data['answers']:
-                    return str(data['answers'][0]).strip()
+        # Try to extract JSON answer
+        if '"answers"' in response and '[' in response:
+            start = response.find('[')
+            end = response.find(']', start) + 1
+            if start != -1 and end != 0:
+                answers_list = json.loads(response[start:end])
+                if answers_list:
+                    return str(answers_list[0]).strip()
         
-        # Fallback to cleaning the response
-        cleaned = raw_response.strip().strip('"{}[]')
-        if len(cleaned) > 5 and len(cleaned) < 500:
+        # Fallback: clean the response
+        cleaned = response.strip().strip('"{}[]')
+        if 10 < len(cleaned) < 300:
             return cleaned
             
-    except Exception as e:
-        print(f"Parse error: {e}")
+    except:
+        pass
     
-    return "Information not found"
+    return "Information not available"
 
-# --- OPTIMIZED PROMPTS (SHORTER) ---
-search_prompt = ChatPromptTemplate.from_messages([
-    ("system", """Generate 2 search queries for this question. Output as JSON:
-{"searches": [{"type": "keyword", "query": "...", "reason": "..."}, {"type": "semantic", "query": "...", "reason": "..."}]}"""),
-    ("human", "Question: {input}")
+# Ultra-simple prompts
+ultra_answer_prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer briefly based on context. Format: {\"answers\": [\"your answer\"]}\n\nContext: {context}"),
+    ("human", "Question: {question}")
 ])
 
-answer_prompt = ChatPromptTemplate.from_messages([
-    ("system", """Answer based on context. Output as JSON: {"answers": ["your answer"]}
-If not found, return: {"answers": ["Information not found"]}
-
-Context: {context}"""),
-    ("human", "Question: {question_text}")
-])
-
-# --- MAIN OPTIMIZED PIPELINE ---
-def run_optimized_pipeline(questions: List[str], documents_url: Optional[str] = None):
-    """Memory-optimized pipeline"""
-    print(f"Processing {len(questions)} questions...")
+def run_ultra_optimized_pipeline(questions: List[str], documents_url: Optional[str] = None):
+    """Ultra-memory-optimized pipeline for 512MB constraint"""
+    print(f"Ultra-processing {len(questions)} questions...")
     
     if not documents_url:
         return {"answers": ["No document provided"] * len(questions)}
     
     try:
-        # Process document
-        document_hash = hashlib.md5(documents_url.encode('utf-8')).hexdigest()[:8]
-        document_chunks = download_and_process_document_optimized(documents_url)
+        # Process document with ultra-light approach
+        doc_hash = hashlib.md5(documents_url.encode()).hexdigest()[:6]  # Shorter hash
+        chunks = download_and_process_ultra_light(documents_url)
         
-        if not document_chunks:
+        if not chunks:
             return {"answers": ["Document processing failed"] * len(questions)}
         
-        # Setup Pinecone
-        setup_pinecone_optimized(document_hash, document_chunks)
+        # Setup ultra-light Pinecone
+        setup_ultra_light_pinecone(doc_hash, chunks)
         
-        # Clear chunks from memory
-        del document_chunks
+        # Clear chunks immediately
+        del chunks
         gc.collect()
         
-        document_filter = {"document_url_hash": document_hash}
+        doc_filter = {"doc_hash": doc_hash}
         
-        # Initialize models for chain
-        initialize_models()
-        model = ChatGroq(groq_api_key=groq_api_key, model_name="llama3-8b-8192")  # Smaller model
-        search_chain = search_prompt | model
-        answer_chain = answer_prompt | model
+        # Initialize ultra-light model
+        initialize_ultra_light_models()
+        model = ChatGroq(
+            groq_api_key=groq_api_key, 
+            model_name="llama3-8b-8192",
+            temperature=0,
+            max_tokens=150  # Limit response length
+        )
+        answer_chain = ultra_answer_prompt | model
         
         final_answers = []
         
-        for question in questions:
-            print(f"Processing: {question[:50]}...")
+        # Process questions one by one to minimize memory
+        for i, question in enumerate(questions):
+            print(f"Processing question {i+1}/{len(questions)}...")
             
             try:
-                # Generate simple search plan
-                searches = generate_simple_search_plan(question)
+                # Generate ultra-simple searches
+                search_queries = generate_ultra_simple_searches(question)
                 
-                # Perform searches
+                # Perform minimal searches
                 all_docs = []
-                for search_item in searches:
-                    docs = perform_optimized_search(search_item, k=3, document_filter=document_filter)
+                for query in search_queries[:2]:  # Limit to 2 searches
+                    docs = perform_ultra_light_search(query, k=2, doc_filter=doc_filter)
                     all_docs.extend(docs)
                 
                 if not all_docs:
                     final_answers.append("Information not found")
                     continue
                 
-                # Prepare context (limit size)
+                # Create minimal context
                 context_parts = []
-                total_length = 0
-                for doc in all_docs:
-                    if total_length > 2000:  # Limit context size
+                total_len = 0
+                for doc in all_docs[:4]:  # Limit to 4 docs
+                    if total_len > 800:  # Very small context limit
                         break
-                    context_parts.append(doc.page_content[:500])  # Truncate each doc
-                    total_length += len(doc.page_content)
+                    text = doc.page_content[:200]  # Truncate each doc
+                    context_parts.append(text)
+                    total_len += len(text)
                 
-                context_str = "\n\n".join(context_parts)
+                context = "\n".join(context_parts)
                 
                 # Generate answer
-                raw_response = answer_chain.invoke({
-                    "context": context_str,
-                    "question_text": question
+                response = answer_chain.invoke({
+                    "context": context,
+                    "question": question
                 })
                 
-                answer = simple_parse_answer(raw_response.content)
+                answer = ultra_simple_parse(response.content)
                 final_answers.append(answer)
                 
-                # Clear variables
-                del all_docs, context_str, raw_response
+                # Aggressive cleanup after each question
+                del all_docs, context_parts, context, response
                 gc.collect()
                 
             except Exception as e:
-                print(f"Error processing question: {e}")
+                print(f"Error processing question {i+1}: {e}")
                 final_answers.append("Processing error")
         
         return {"answers": final_answers}
@@ -383,29 +361,28 @@ def run_optimized_pipeline(questions: List[str], documents_url: Optional[str] = 
         print(f"Pipeline error: {e}")
         return {"answers": ["Pipeline error"] * len(questions)}
 
-# --- MAIN EXECUTION ---
+# Main execution
 if __name__ == "__main__":
-    print("Starting optimized RAG pipeline...")
+    print("Starting ultra-optimized RAG for 512MB memory...")
     
     sample_request = {
         "documents": "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D",
         "questions": [
             "What is the grace period for premium payment?",
             "What is the waiting period for pre-existing diseases?",
-            "Does this policy cover maternity expenses?",
-            "What is the waiting period for cataract surgery?",
-            "Are medical expenses for organ donors covered?"
+            "Does this policy cover maternity expenses?"
         ]
     }
     
     try:
-        result = run_optimized_pipeline(
+        result = run_ultra_optimized_pipeline(
             questions=sample_request["questions"],
             documents_url=sample_request["documents"]
         )
-        print("\n--- Final Results ---")
+        print("\n--- Ultra-Optimized Results ---")
         print(json.dumps(result, indent=2))
         
     except Exception as e:
         print(f"Execution error: {e}")
+        import traceback
         traceback.print_exc()
