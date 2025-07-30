@@ -22,18 +22,16 @@ pypdf
 pymupdf
 python-docx
 docx2txt
-bs4
-wikipedia
-arxiv
-unstructured
-youtube_transcript_api
-pytube
 
-duckduckgo_search==5.3.1b1
+unstructured
+
+
+
+
 validators==0.28.1
 
-mysql-connector-python
-SQLAlchemy
+
+
 
 flask
 flask-cors
@@ -42,7 +40,6 @@ requests
 python-dotenv
 pandas
 numexpr
-neo4j
-gradio
 
-ipykernel
+
+
