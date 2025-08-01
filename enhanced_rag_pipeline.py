@@ -273,7 +273,7 @@ Context: {context}"""),
 
 
 def run_optimized_pipeline(questions: List[str]):
-    """Memory-optimized pipeline for live Q&A"""
+    """Memory-optimized pipeline for live Q&A with debug logs"""
     logging.info(f"Processing {len(questions)} questions...")
     
     try:
@@ -302,7 +302,7 @@ def run_optimized_pipeline(questions: List[str]):
             
             try:
                 searches = generate_simple_search_plan(question)
-                # Verbose log removed: logging.info(f"-> Generated search queries: {searches}")
+                logging.info(f"-> Generated search queries: {searches}")
                 
                 all_docs = []
                 unique_doc_contents = set()
@@ -320,7 +320,10 @@ def run_optimized_pipeline(questions: List[str]):
                     continue
                 
                 logging.info(f"-> Retrieved {len(all_docs)} unique documents.")
-                # Verbose loop removed: printing contents of each doc
+                
+                # --- TEMPORARY DEBUG LOGGING ---
+                for i, doc in enumerate(all_docs):
+                    logging.info(f"   - Doc {i+1} (Page {doc.metadata.get('page', 'N/A')}): {doc.page_content[:150]}...")
                 
                 context_parts = []
                 total_length = 0
@@ -333,15 +336,14 @@ def run_optimized_pipeline(questions: List[str]):
                     total_length += len(chunk)
 
                 context_str = "\n\n".join(context_parts)
-                # Verbose log removed: printing the full context string. Only a summary is kept.
-                logging.info(f"-> Final context sent to LLM (total length: {len(context_str)})")
+                
+                # --- TEMPORARY DEBUG LOGGING ---
+                logging.info(f"-> Final context sent to LLM (total length: {len(context_str)}):\n---\n{context_str[:1000]}...\n---\n")
                 
                 raw_response = answer_chain.invoke({
                     "context": context_str,
                     "question_text": question
                 })
-                
-                # Verbose log removed: printing the full raw LLM response.
                 
                 answer = simple_parse_answer(raw_response.content)
                 final_answers.append(answer)

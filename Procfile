@@ -1,1 +1,1 @@
-web: python rag_api
+web: python nltk_setup.py && python rag_api.py
