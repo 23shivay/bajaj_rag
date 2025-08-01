@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from enhanced_rag_pipeline import run_ultra_optimized_pipeline
+from enhanced_rag_pipeline import run_optimized_pipeline
 
 app = Flask(__name__)
 CORS(app)
@@ -22,7 +22,7 @@ def run_rag():
         if not documents_url or not questions:
             return jsonify({"error": "Both 'documents' and 'questions' fields are required."}), 400
 
-        result =run_ultra_optimized_pipeline(questions=questions, documents_url=documents_url)
+        result =run_optimized_pipeline(questions=questions)
         return jsonify(result), 200
 
     except Exception as e:
